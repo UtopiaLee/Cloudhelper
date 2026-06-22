@@ -1,0 +1,40 @@
+# Caddy HTTPS overlay：在主 docker-compose.yml 之上叠加这个文件
+# 用法：
+#   1. 在 .env 设置 CADDY_DOMAIN=your-domain.com 和 CADDY_EMAIL=you@example.com
+#   2. 域名 A 记录指向服务器 IP
+#   3. 服务器 80/443 端口对外开放
+#   4. 启动:
+#        docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+#
+# Caddy 会自动从 Let's Encrypt 申请证书并续期。
+
+services:
+  frontend:
+    # 关掉对外的 80 端口，只让 caddy 内部访问
+    ports: !reset []
+    expose:
+      - "80"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cloudhelper-caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?CADDY_DOMAIN 必填，例如 cloudhelper.example.com}
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@example.com}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - cloudhelper
+
+volumes:
+  caddy_data:
+  caddy_config:

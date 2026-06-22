@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    image: cloudhelper-backend:latest
+    container_name: cloudhelper-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////data/cloudhelper.db
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    expose:
+      - "8000"
+    # 只对内网暴露；对外通过 frontend 的 nginx 代理
+    networks:
+      - cloudhelper
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: /api
+    image: cloudhelper-frontend:latest
+    container_name: cloudhelper-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    networks:
+      - cloudhelper
+
+networks:
+  cloudhelper:
+    driver: bridge

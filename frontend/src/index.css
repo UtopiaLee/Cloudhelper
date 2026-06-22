@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+
+  --bg: #f1f5fb;
+  --text: #0f172a;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  background: var(--bg);
+  background-image:
+    radial-gradient(at 8% 12%, rgba(99, 102, 241, 0.18) 0, transparent 38%),
+    radial-gradient(at 92% 8%, rgba(236, 72, 153, 0.13) 0, transparent 42%),
+    radial-gradient(at 70% 90%, rgba(16, 185, 129, 0.13) 0, transparent 42%),
+    radial-gradient(at 18% 88%, rgba(56, 189, 248, 0.16) 0, transparent 42%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+@layer components {
+  /* === 玻璃卡片 === */
+  .glass {
+    @apply rounded-2xl border border-white/40
+           bg-gradient-to-br from-white/70 via-white/55 to-white/40
+           backdrop-blur-xl shadow-[0_8px_32px_-8px_rgba(15,23,42,0.18)];
+  }
+  .glass-hover {
+    @apply transition-all duration-300
+           hover:shadow-[0_20px_50px_-12px_rgba(99,102,241,0.35)]
+           hover:-translate-y-0.5 hover:border-indigo-200/60;
+  }
+
+  /* === 按钮 === */
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg
+           border border-white/50 bg-white/60 text-slate-700 backdrop-blur
+           hover:bg-white hover:shadow-md hover:-translate-y-px
+           active:translate-y-0
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0
+           transition-all duration-200;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg
+           text-white border border-indigo-500/30
+           bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600
+           shadow-[0_4px_14px_rgba(124,58,237,0.4)]
+           hover:shadow-[0_6px_20px_rgba(124,58,237,0.55)] hover:-translate-y-px
+           active:translate-y-0
+           disabled:opacity-50 transition-all duration-200;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg
+           text-white border border-red-500/30
+           bg-gradient-to-r from-red-500 to-rose-500
+           shadow-[0_4px_14px_rgba(244,63,94,0.4)]
+           hover:shadow-[0_6px_20px_rgba(244,63,94,0.55)] hover:-translate-y-px
+           transition-all duration-200;
+  }
+  .btn-sm { @apply px-2.5 py-1 text-xs rounded-md; }
+  .btn-ghost {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg
+           text-slate-600 hover:bg-white/60 hover:text-slate-900 transition-colors;
+  }
+
+  /* === 输入 === */
+  .input {
+    @apply w-full border border-white/50 rounded-lg px-3 py-1.5 text-sm
+           bg-white/70 backdrop-blur
+           placeholder:text-slate-400
+           focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-300 focus:bg-white
+           disabled:bg-slate-100/50 disabled:cursor-not-allowed transition-all;
+  }
+  .label {
+    @apply block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5;
+  }
+
+  /* === 标签 === */
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+  .tag-running { @apply bg-emerald-100/80 text-emerald-700 ring-1 ring-emerald-300/50; }
+  .tag-stopped { @apply bg-slate-100/80 text-slate-500 ring-1 ring-slate-200; }
+  .tag-pending { @apply bg-amber-100/80 text-amber-700 ring-1 ring-amber-300/50; }
+  .tag-error   { @apply bg-red-100/80 text-red-700 ring-1 ring-red-300/50; }
+  .tag-info    { @apply bg-sky-100/80 text-sky-700 ring-1 ring-sky-300/50; }
+
+  /* 状态光点（带呼吸动画） */
+  .status-dot {
+    @apply inline-block w-1.5 h-1.5 rounded-full mr-1.5;
+  }
+  .status-dot-running {
+    @apply bg-emerald-500;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  .status-dot-stopped { @apply bg-slate-400; }
+  .status-dot-pending {
+    @apply bg-amber-500;
+    animation: pulse-glow 1.2s ease-in-out infinite;
+  }
+  .status-dot-error { @apply bg-red-500; animation: pulse-glow 1s ease-in-out infinite; }
+
+  /* 表格 */
+  .table-clean {
+    @apply w-full text-sm border-separate border-spacing-0;
+  }
+  .table-clean thead th {
+    @apply text-left text-[11px] font-semibold text-slate-500 uppercase tracking-widest
+           px-3 py-2.5 border-b border-white/60 bg-white/30 backdrop-blur-sm;
+  }
+  .table-clean tbody td {
+    @apply px-3 py-3 border-b border-white/40 align-middle;
+  }
+  .table-clean tbody tr {
+    @apply transition-colors;
+  }
+  .table-clean tbody tr:hover td {
+    @apply bg-white/40;
+  }
+  .table-clean tbody tr:last-child td { @apply border-b-0; }
+
+  /* 渐变文字（用在大数字 / 标题） */
+  .gradient-text {
+    @apply bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent;
+  }
+
+  /* 进度条带流动光泽 */
+  .progress-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+    animation: shimmer 2.5s infinite;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18); }
+  50%      { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);     }
+}
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%);  }
+}
+@keyframes float-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.float-up { animation: float-up 0.4s ease-out backwards; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #64748b; background-clip: padding-box; border: 2px solid transparent; }

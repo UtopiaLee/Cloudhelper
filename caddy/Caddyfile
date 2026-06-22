@@ -1,0 +1,45 @@
+{
+    email {$CADDY_EMAIL}
+    # 自动 ACME（Let's Encrypt）已是默认行为
+}
+
+{$CADDY_DOMAIN} {
+    encode gzip zstd
+
+    # 健康检查不走 HTTPS 重定向
+    handle /healthz {
+        respond "ok" 200
+    }
+
+    # 全部反代到 frontend nginx
+    reverse_proxy frontend:80 {
+        # WebSocket 透传
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        # SSH 终端 WebSocket 长连接
+        transport http {
+            read_timeout 3600s
+        }
+    }
+
+    # 安全头
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # 移除暴露的 server 信息
+        -Server
+    }
+
+    # 访问日志（可选）
+    log {
+        output file /data/access.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        format json
+    }
+}
