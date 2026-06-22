@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
@@ -37,6 +38,10 @@ SSH_BANNER_TIMEOUT = 20
 MAX_WORKERS = 10
 STOP_THRESHOLD_PCT = 90  # 出站超过限额的 90% 就关机
 WARN_THRESHOLD_PCT = 80  # 80% 发 webhook 警告
+PUBLIC_IP_WAIT_RETRIES = 4
+PUBLIC_IP_WAIT_SEC = 5
+ALIVE_PROBE_RETRIES = 3
+ALIVE_PROBE_WAIT_SEC = 3
 
 
 def _default_ssh_user(image: str = "", tags: dict | None = None) -> str:
@@ -171,6 +176,26 @@ def _ym() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
+def _wait_public_ip(db: Session, st: InstanceState, account: CloudAccount) -> bool:
+    if st.public_ip:
+        return True
+    provider = make_provider(account, db=db)
+    for _ in range(PUBLIC_IP_WAIT_RETRIES):
+        time.sleep(PUBLIC_IP_WAIT_SEC)
+        try:
+            inst = provider.get_instance(st.instance_id, st.region, st.zone)
+        except Exception:
+            continue
+        if inst.public_ip:
+            st.public_ip = inst.public_ip
+            st.private_ip = inst.private_ip
+            st.state = inst.state or st.state
+            st.name = inst.name or st.name
+            db.commit()
+            return True
+    return False
+
+
 def collect_one(account_id: int, instance_id: str) -> dict:
     """对单个实例做一次采集。"""
     with SessionLocal() as db:
@@ -178,10 +203,19 @@ def collect_one(account_id: int, instance_id: str) -> dict:
             InstanceState.account_id == account_id,
             InstanceState.instance_id == instance_id,
         ))
-        if not st or not st.public_ip:
-            return {"ok": False, "error": "no public ip"}
+        if not st:
+            return {"ok": False, "error": "instance not found"}
         if st.state != "running":
             return {"ok": False, "error": "not running"}
+
+        if not st.public_ip:
+            account = db.get(CloudAccount, account_id)
+            if not account:
+                return {"ok": False, "error": "account not found"}
+            if not _wait_public_ip(db, st, account):
+                st.last_collect_error = "no public ip"
+                db.commit()
+                return {"ok": False, "error": "no public ip"}
 
         # 凭据：密码 优先 + 密钥 fallback（顺序跟 Shell 一致）
         password = ""
@@ -306,6 +340,84 @@ def collect_all() -> dict:
                 summary["failed"] += 1
 
     _enforce_limits()
+    return summary
+
+
+def _probe_one_alive(account_id: int, instance_id: str) -> dict:
+    with SessionLocal() as db:
+        st = db.scalar(select(InstanceState).where(
+            InstanceState.account_id == account_id,
+            InstanceState.instance_id == instance_id,
+        ))
+        if not st:
+            return {"ok": False, "error": "instance not found"}
+        if st.state != "running":
+            return {"ok": False, "error": "not running"}
+        if not st.public_ip:
+            account = db.get(CloudAccount, account_id)
+            if not account:
+                return {"ok": False, "error": "account not found"}
+            if not _wait_public_ip(db, st, account):
+                st.last_collect_error = "alive probe: no public ip"
+                db.commit()
+                return {"ok": False, "error": "no public ip"}
+
+        password = ""
+        if st.ssh_password_enc:
+            try:
+                password = get_crypto().decrypt(st.ssh_password_enc)
+            except Exception:
+                password = ""
+        key = _load_default_key(db)
+        if not password and not key:
+            st.last_collect_error = "alive probe: no ssh credentials"
+            db.commit()
+            return {"ok": False, "error": "no ssh credentials"}
+
+        user = st.ssh_user or _default_ssh_user(image=st.image, tags=st.tags or {})
+        port = st.ssh_port or 22
+
+        last_err = ""
+        for i in range(ALIVE_PROBE_RETRIES):
+            try:
+                client, _ = connect_ssh(st.public_ip, port, user, password or None, key)
+                client.close()
+                st.last_alive_at = datetime.utcnow()
+                st.last_collect_error = ""
+                db.commit()
+                return {"ok": True, "instance_id": instance_id}
+            except Exception as e:
+                last_err = str(e)[:500]
+                if i < ALIVE_PROBE_RETRIES - 1:
+                    time.sleep(ALIVE_PROBE_WAIT_SEC)
+
+        st.last_collect_error = f"alive probe failed: {last_err}" if last_err else "alive probe failed"
+        db.commit()
+        return {"ok": False, "error": last_err or "alive probe failed"}
+
+
+def probe_alive_all() -> dict:
+    with SessionLocal() as db:
+        targets = db.execute(select(InstanceState.account_id, InstanceState.instance_id).where(
+            InstanceState.state == "running",
+        )).all()
+
+    summary = {"total": len(targets), "ok": 0, "failed": 0}
+    if not targets:
+        return summary
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        futures = [ex.submit(_probe_one_alive, a, i) for a, i in targets]
+        for f in as_completed(futures):
+            try:
+                r = f.result()
+                if r.get("ok"):
+                    summary["ok"] += 1
+                else:
+                    summary["failed"] += 1
+            except Exception:
+                summary["failed"] += 1
+
     return summary
 
 

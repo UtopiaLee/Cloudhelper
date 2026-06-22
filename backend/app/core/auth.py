@@ -88,6 +88,10 @@ def revoke_session(token: str) -> None:
     _SESSIONS.pop(token, None)
 
 
+def revoke_all_sessions() -> None:
+    _SESSIONS.clear()
+
+
 def _extract_token(request: Request) -> str:
     h = request.headers.get("authorization", "")
     if h.lower().startswith("bearer "):

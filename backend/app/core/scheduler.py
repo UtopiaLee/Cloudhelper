@@ -101,6 +101,14 @@ def start() -> None:
         misfire_grace_time=300,
     )
     s.add_job(
+        "app.services.ssh_collector:probe_alive_all",
+        CronTrigger.from_crontab("*/5 * * * *", timezone=_tz()),
+        id="sys.ssh_alive_probe",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=180,
+    )
+    s.add_job(
         "app.services.billing_tick:tick_all",
         CronTrigger.from_crontab("*/30 * * * *", timezone=_tz()),
         id="sys.billing_tick",
@@ -119,6 +127,14 @@ def start() -> None:
         CronTrigger(day=1, hour=1, minute=0, timezone=_tz()),
         id="sys.monthly_reset",
         replace_existing=True,
+    )
+    s.add_job(
+        "app.services.scheduler_jobs:remind_account_expiry",
+        CronTrigger(hour=9, minute=0, timezone=_tz()),
+        id="sys.account_expiry_remind",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=3600,
     )
 
 

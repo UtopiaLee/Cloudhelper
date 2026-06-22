@@ -68,6 +68,11 @@ def get_knock_secret() -> str:
     return _current_secret or ""
 
 
+def set_knock_secret(secret: str) -> None:
+    global _current_secret
+    _current_secret = secret.strip()
+
+
 def check_knock(provided: str) -> bool:
     expected = get_knock_secret()
     if not expected:

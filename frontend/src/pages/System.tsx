@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { PageHeader } from "../lib/components";
 import { useToast } from "../lib/toast";
@@ -37,6 +37,13 @@ interface TlsStatus {
   days_until_expiry: number | null;
   sans: string[];
   error: string;
+}
+
+interface SecurityStatus {
+  username_auth_enabled: boolean;
+  token_auth_enabled: boolean;
+  current_username: string;
+  knock_configured: boolean;
 }
 
 export default function SystemPage() {
@@ -107,8 +114,122 @@ export default function SystemPage() {
         </motion.div>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 mb-4">
+        <SecuritySection />
+      </div>
+
       <TLSSection />
     </div>
+  );
+}
+
+function SecuritySection() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [rotatedSecret, setRotatedSecret] = useState("");
+
+  const status = useQuery<SecurityStatus>({
+    queryKey: ["security-status"],
+    queryFn: async () => (await api.get<SecurityStatus>("/system/security")).data,
+  });
+
+  useEffect(() => {
+    if (status.data) {
+      setNewUsername(status.data.current_username || "");
+    }
+  }, [status.data]);
+
+  const updateAuth = useMutation({
+    mutationFn: async (payload: { current_password: string; new_username: string; new_password: string }) =>
+      (await api.post("/system/security/auth", payload)).data,
+    onSuccess: () => {
+      toast.show("账号密码已更新，请重新登录", "success");
+      setCurrentPassword("");
+      setNewPassword("");
+      qc.invalidateQueries({ queryKey: ["security-status"] });
+      window.dispatchEvent(new Event("ch-auth-changed"));
+    },
+    onError: (e: Error) => toast.show(e.message, "error"),
+  });
+
+  const rotateKnock = useMutation({
+    mutationFn: async () => (await api.post<{ knock_secret: string }>("/system/security/knock/rotate")).data,
+    onSuccess: (v) => {
+      setRotatedSecret(v.knock_secret);
+      toast.show("随机密钥已更新", "success");
+      qc.invalidateQueries({ queryKey: ["security-status"] });
+    },
+    onError: (e: Error) => toast.show(e.message, "error"),
+  });
+
+  function submitAuth() {
+    const username = newUsername.trim();
+    if (!username) {
+      toast.show("用户名不能为空", "error");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.show("新密码至少 6 位", "error");
+      return;
+    }
+    updateAuth.mutate({
+      current_password: currentPassword,
+      new_username: username,
+      new_password: newPassword,
+    });
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-slate-900">登录与访问密钥</h3>
+        <span className="text-xs text-slate-400">安全设置</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-3">
+          <div className="text-xs text-slate-500 bg-slate-50/60 rounded-md p-2.5">
+            当前账号：<b>{status.data?.current_username || "未启用"}</b>
+          </div>
+          <div>
+            <label className="label">当前密码</label>
+            <input type="password" className="input" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="验证身份" />
+          </div>
+          <div>
+            <label className="label">新用户名</label>
+            <input className="input" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="例如 admin" />
+          </div>
+          <div>
+            <label className="label">新密码</label>
+            <input type="password" className="input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="至少 6 位" />
+          </div>
+          <button className="btn-primary w-full" disabled={updateAuth.isPending} onClick={submitAuth}>
+            {updateAuth.isPending ? "保存中…" : "更新登录账号密码"}
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-xs text-slate-500 bg-amber-50/70 border border-amber-200/60 rounded-md p-2.5">
+            轮换后旧密钥立即失效，已打开页面可能需要重新带 <code>?key=</code> 访问。
+          </div>
+          <button className="btn w-full" disabled={rotateKnock.isPending} onClick={() => rotateKnock.mutate()}>
+            {rotateKnock.isPending ? "生成中…" : "生成新的随机密钥"}
+          </button>
+          <div>
+            <label className="label">最新随机密钥（仅本次显示）</label>
+            <input className="input font-mono text-xs" readOnly value={rotatedSecret} placeholder="点击上方按钮生成" />
+          </div>
+          {rotatedSecret && (
+            <div className="text-[11px] text-slate-500 bg-slate-50/60 rounded-md p-2.5 break-all">
+              访问链接：{window.location.origin}/?key={rotatedSecret}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }
 

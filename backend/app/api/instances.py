@@ -177,9 +177,7 @@ def create_instance(account_id: int, payload: InstanceCreate, db: Session = Depe
     try:
         inst = provider.create_instance(spec)
     except Exception as e:
-        # 把 boto3 / google client 的真实错误透传给前端
         msg = str(e)
-        # botocore.ClientError 通常有 "An error occurred (XXX) when calling..."
         if "InvalidParameterCombination" in msg and "Free Tier" in msg:
             msg += "\n\n💡 提示：当前 region 的此规格不在 Free Tier。换 t3.micro 或换 us-east-1 region 试试。"
         elif "InvalidGroup.NotFound" in msg or "Security group" in msg:
@@ -188,6 +186,12 @@ def create_instance(account_id: int, payload: InstanceCreate, db: Session = Depe
             msg += "\n\n💡 提示：账户 vCPU 配额已用满，去 AWS Console → Service Quotas 申请提升"
         elif "InvalidSubnet" in msg:
             msg += "\n\n💡 提示：子网 ID 无效，留空使用默认 VPC"
+        elif "Oracle 未找到可用子网" in msg:
+            msg += "\n\n💡 提示：请在账户凭据里配置 compartment_id，或在创建时指定 network=subnet_ocid。"
+        elif "Oracle 未找到镜像" in msg:
+            msg += "\n\n💡 提示：Oracle 可直接填 image OCID，或用别名 oracle-8 / oracle-9 / ubuntu-22.04 / ubuntu-24.04。"
+        elif "NotAuthorizedOrNotFound" in msg:
+            msg += "\n\n💡 提示：请检查 Oracle 凭据（user/fingerprint/tenancy/key）及目标 compartment 的权限。"
         raise HTTPException(400, msg)
 
     # ssh_user 策略：按镜像猜默认账户（cloud-init 给所有常见账户都设了同密码）

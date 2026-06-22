@@ -9,10 +9,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=[".env", "../.env"], env_file_encoding="utf-8", extra="ignore")
 
     master_password: str = Field(default="change-me-please", alias="MASTER_PASSWORD")
-    auth_username: str = Field(default="", alias="AUTH_USERNAME")  # 空 = 不开鉴权
-    auth_password: str = Field(default="", alias="AUTH_PASSWORD")  # 明文，启动时哈希
-    access_token: str = Field(default="", alias="ACCESS_TOKEN")    # 静态 token（API 客户端用）
-    knock_secret: str = Field(default="", alias="KNOCK_SECRET")    # 空 = 启动时随机生成
+    auth_username: str = Field(default="", alias="AUTH_USERNAME")
+    auth_password: str = Field(default="", alias="AUTH_PASSWORD")
+    access_token: str = Field(default="", alias="ACCESS_TOKEN")
+    knock_secret: str = Field(default="", alias="KNOCK_SECRET")
     database_url: str = Field(default="sqlite:///./data/cloudhelper.db", alias="DATABASE_URL")
     cors_origins: str = Field(default="http://localhost:8080,http://localhost:5173", alias="CORS_ORIGINS")
     tz: str = Field(default="Asia/Shanghai", alias="TZ")
@@ -27,3 +27,51 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def reload_settings() -> Settings:
+    get_settings.cache_clear()
+    return get_settings()
+
+
+def _resolve_env_path() -> Path:
+    candidates = [Path(".env"), Path("../.env")]
+    for p in candidates:
+        rp = p.resolve()
+        if rp.exists():
+            return rp
+    return candidates[0].resolve()
+
+
+def update_env_vars(updates: dict[str, str]) -> Path:
+    env_path = _resolve_env_path()
+    updates = {k: v for k, v in updates.items() if k and v is not None}
+
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+    pending = dict(updates)
+    out: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            out.append(line)
+            continue
+
+        key, _ = line.split("=", 1)
+        key = key.strip()
+        if key in pending:
+            out.append(f"{key}={pending.pop(key)}")
+        else:
+            out.append(line)
+
+    if pending:
+        if out and out[-1].strip():
+            out.append("")
+        for k, v in pending.items():
+            out.append(f"{k}={v}")
+
+    env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return env_path

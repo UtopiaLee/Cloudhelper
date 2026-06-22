@@ -6,7 +6,7 @@ import { api, Account, BulkResult, Instance, Schedule } from "../lib/api";
 import { useAccount } from "../lib/account-context";
 import { PageHeader, ProgressBar, ProviderTag, StateBadge, fmtAgo, fmtBytes } from "../lib/components";
 import { Spinner, useToast } from "../lib/toast";
-import { AWS_IMAGE_ALIASES, DEFAULT_TRAFFIC_GB, DISK_SIZE_PRESETS, DISK_TYPES, GCP_IMAGES, INSTANCE_TYPES, REGIONS } from "../lib/presets";
+import { AWS_IMAGE_ALIASES, AZURE_IMAGES, DEFAULT_TRAFFIC_GB, DISK_SIZE_PRESETS, DISK_TYPES, GCP_IMAGES, INSTANCE_TYPES, ORACLE_IMAGES, REGIONS } from "../lib/presets";
 import { TrafficChart } from "../lib/charts";
 
 type Scope = "all" | "current" | "group";
@@ -1031,6 +1031,8 @@ function CreateInstanceModal({ accounts, defaultAccountId, onClose }: {
 
   const images = provider === "aws" ? AWS_IMAGE_ALIASES
                 : provider === "gcp" ? GCP_IMAGES
+                : provider === "oracle" ? ORACLE_IMAGES
+                : provider === "azure" ? AZURE_IMAGES
                 : [];
   const [image, setImage] = useState(images[0]?.value || "");
 
@@ -1045,7 +1047,10 @@ function CreateInstanceModal({ accounts, defaultAccountId, onClose }: {
     const newTypes = INSTANCE_TYPES[account.provider as "aws" | "gcp" | "oracle" | "azure"] || [];
     setInstanceType(newTypes[0]?.value || "");
     const newImages = account.provider === "aws" ? AWS_IMAGE_ALIASES
-                    : account.provider === "gcp" ? GCP_IMAGES : [];
+                    : account.provider === "gcp" ? GCP_IMAGES
+                    : account.provider === "oracle" ? ORACLE_IMAGES
+                    : account.provider === "azure" ? AZURE_IMAGES
+                    : [];
     setImage(newImages[0]?.value || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId]);
@@ -1061,7 +1066,7 @@ function CreateInstanceModal({ accounts, defaultAccountId, onClose }: {
 
   // 该 region 下的安全组列表
   const sgs = useQuery({
-    enabled: !!accountId && !!region && (provider === "aws" || provider === "gcp"),
+    enabled: !!accountId && !!region && (provider === "aws" || provider === "gcp" || provider === "oracle"),
     queryKey: ["sgs", accountId, region],
     queryFn: async () => (await api.get<{ id: string; name: string; description: string; vpc_id: string }[]>(
       `/accounts/${accountId}/instances/options/security-groups`,
@@ -1182,7 +1187,7 @@ function CreateInstanceModal({ accounts, defaultAccountId, onClose }: {
                 {images.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             ) : (
-              <input className="input font-mono text-xs" placeholder={provider === "aws" ? "ami-xxxxxxxx" : "projects/.../images/family/..."} value={image} onChange={(e) => setImage(e.target.value)} />
+              <input className="input font-mono text-xs" placeholder={provider === "aws" ? "ami-xxxxxxxx" : provider === "gcp" ? "projects/.../images/family/..." : provider === "oracle" ? "oracle-8 或 ocid1.image..." : provider === "azure" ? "ubuntu-22.04 或 publisher:offer:sku" : "镜像 ID"} value={image} onChange={(e) => setImage(e.target.value)} />
             )}
           </div>
 

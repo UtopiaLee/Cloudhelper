@@ -205,6 +205,17 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
     aws_access_key_id: "",
     aws_secret_access_key: "",
     gcp_sa_json: "",
+    oracle_tenancy: "",
+    oracle_user: "",
+    oracle_fingerprint: "",
+    oracle_region: "",
+    oracle_compartment_id: "",
+    oracle_key_pem: "",
+    azure_tenant_id: "",
+    azure_client_id: "",
+    azure_client_secret: "",
+    azure_subscription_id: "",
+    azure_resource_group: "CloudHelper",
   });
 
   // 切换 provider 时如果用户没改过默认流量，跟着更新
@@ -230,6 +241,29 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
         } else if (f.provider === "gcp") {
           if (!f.gcp_sa_json.trim()) throw new Error("Service Account JSON 不能为空");
           credentials = JSON.parse(f.gcp_sa_json);
+        } else if (f.provider === "oracle") {
+          if (!f.oracle_tenancy || !f.oracle_user || !f.oracle_fingerprint || !f.oracle_key_pem) {
+            throw new Error("Oracle 凭据必须填 tenancy / user / fingerprint / private key");
+          }
+          credentials = {
+            tenancy: f.oracle_tenancy.trim(),
+            user: f.oracle_user.trim(),
+            fingerprint: f.oracle_fingerprint.trim(),
+            region: (f.oracle_region || f.default_region || "").trim(),
+            compartment_id: f.oracle_compartment_id.trim(),
+            key_pem: f.oracle_key_pem,
+          };
+        } else if (f.provider === "azure") {
+          if (!f.azure_tenant_id || !f.azure_client_id || !f.azure_client_secret || !f.azure_subscription_id) {
+            throw new Error("Azure 凭据必须填 tenant_id / client_id / client_secret / subscription_id");
+          }
+          credentials = {
+            tenant_id: f.azure_tenant_id.trim(),
+            client_id: f.azure_client_id.trim(),
+            client_secret: f.azure_client_secret,
+            subscription_id: f.azure_subscription_id.trim(),
+            resource_group: (f.azure_resource_group || "CloudHelper").trim(),
+          };
         } else {
           throw new Error(`${f.provider} 暂未实现`);
         }
@@ -264,8 +298,8 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
                       onChange={(e) => onProviderChange(e.target.value as Provider)}>
                 <option value="aws">AWS</option>
                 <option value="gcp">GCP</option>
-                <option value="oracle">Oracle (TBD)</option>
-                <option value="azure">Azure (TBD)</option>
+                <option value="oracle">Oracle</option>
+                <option value="azure">Azure</option>
               </select></div>
           </div>
           <RegionField provider={f.provider} value={f.default_region} onChange={(v) => setF({ ...f, default_region: v })} />
@@ -319,9 +353,42 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
             <div><label className="label">Service Account JSON</label>
               <textarea className="input h-40 font-mono text-xs" value={f.gcp_sa_json} onChange={(e) => setF({ ...f, gcp_sa_json: e.target.value })} /></div>
           )}
-          {(f.provider === "oracle" || f.provider === "azure") && (
-            <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
-              {f.provider.toUpperCase()} provider 还在开发中。Phase 1 暂只支持 AWS / GCP。
+          {(!keepCreds || !isEdit) && f.provider === "oracle" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label">Tenancy OCID</label>
+                  <input className="input font-mono text-xs" value={f.oracle_tenancy} onChange={(e) => setF({ ...f, oracle_tenancy: e.target.value })} placeholder="ocid1.tenancy.oc1.." /></div>
+                <div><label className="label">User OCID</label>
+                  <input className="input font-mono text-xs" value={f.oracle_user} onChange={(e) => setF({ ...f, oracle_user: e.target.value })} placeholder="ocid1.user.oc1.." /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label">API Key Fingerprint</label>
+                  <input className="input font-mono text-xs" value={f.oracle_fingerprint} onChange={(e) => setF({ ...f, oracle_fingerprint: e.target.value })} placeholder="aa:bb:cc:..." /></div>
+                <div><label className="label">默认 Region（可选，覆盖账号默认）</label>
+                  <input className="input font-mono text-xs" value={f.oracle_region} onChange={(e) => setF({ ...f, oracle_region: e.target.value })} placeholder="ap-singapore-1" /></div>
+              </div>
+              <div><label className="label">Compartment OCID（推荐，省去自动探测）</label>
+                <input className="input font-mono text-xs" value={f.oracle_compartment_id} onChange={(e) => setF({ ...f, oracle_compartment_id: e.target.value })} placeholder="ocid1.compartment.oc1.." /></div>
+              <div><label className="label">API 私钥 PEM</label>
+                <textarea className="input h-32 font-mono text-xs" value={f.oracle_key_pem} onChange={(e) => setF({ ...f, oracle_key_pem: e.target.value })} placeholder="-----BEGIN PRIVATE KEY-----..." /></div>
+            </div>
+          )}
+          {(!keepCreds || !isEdit) && f.provider === "azure" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label">Tenant ID</label>
+                  <input className="input font-mono text-xs" value={f.azure_tenant_id} onChange={(e) => setF({ ...f, azure_tenant_id: e.target.value })} placeholder="00000000-0000-0000-0000-000000000000" /></div>
+                <div><label className="label">Subscription ID</label>
+                  <input className="input font-mono text-xs" value={f.azure_subscription_id} onChange={(e) => setF({ ...f, azure_subscription_id: e.target.value })} placeholder="00000000-..." /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label">Client ID（App Registration）</label>
+                  <input className="input font-mono text-xs" value={f.azure_client_id} onChange={(e) => setF({ ...f, azure_client_id: e.target.value })} placeholder="00000000-..." /></div>
+                <div><label className="label">Client Secret</label>
+                  <input type="password" className="input font-mono text-xs" value={f.azure_client_secret} onChange={(e) => setF({ ...f, azure_client_secret: e.target.value })} /></div>
+              </div>
+              <div><label className="label">资源组（不存在会自动创建）</label>
+                <input className="input font-mono text-xs" value={f.azure_resource_group} onChange={(e) => setF({ ...f, azure_resource_group: e.target.value })} placeholder="CloudHelper" /></div>
             </div>
           )}
           {save.isError && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{(save.error as Error).message}</div>}
@@ -365,18 +432,26 @@ function ProviderGuide({ provider }: { provider: Provider }) {
       perms: ["roles/compute.admin", "（可选）roles/cloudbilling.viewer"],
     },
     oracle: {
-      title: "Oracle Cloud（待实现）",
+      title: "Oracle Cloud（OCI）凭据",
       steps: [
-        { label: "Phase 2 实现", tip: "目前请用 AWS / GCP" },
+        { label: "1. 登录 OCI Console", href: "https://cloud.oracle.com/" },
+        { label: "2. Profile → User Settings → API Keys → Add API Key", tip: "选 Generate API Key Pair 并下载 private key" },
+        { label: "3. 复制底部 Configuration File Preview 里的 tenancy / user / fingerprint" },
+        { label: "4. 默认 Region 用你订阅的某个区（如 ap-singapore-1）" },
+        { label: "5. 推荐填 Compartment OCID（不填则自动列举）" },
       ],
-      perms: [],
+      perms: ["Compute / Network / Identity Read+Manage in target compartment"],
     },
     azure: {
-      title: "Azure（待实现）",
+      title: "Azure 凭据（Service Principal）",
       steps: [
-        { label: "Phase 3 实现" },
+        { label: "1. Azure Portal → App registrations", href: "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" },
+        { label: "2. New registration → 拿到 Application (client) ID + Directory (tenant) ID" },
+        { label: "3. Certificates & secrets → New client secret → 复制 Value" },
+        { label: "4. Subscription → IAM → Add role assignment → Contributor 给该 SP" },
+        { label: "5. Subscription ID 在订阅总览复制" },
       ],
-      perms: [],
+      perms: ["Contributor on subscription", "Reader on tenant locations"],
     },
   };
   const g = guides[provider];

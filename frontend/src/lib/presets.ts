@@ -48,10 +48,28 @@ export const REGIONS: Record<Provider, RegionPreset[]> = {
   ],
   azure: [
     { label: "eastus 弗吉尼亚", value: "eastus" },
+    { label: "eastus2 弗吉尼亚 2", value: "eastus2" },
     { label: "westus2 华盛顿", value: "westus2" },
-    { label: "southeastasia 新加坡", value: "southeastasia" },
-    { label: "japaneast 东京", value: "japaneast" },
+    { label: "westus3 凤凰城", value: "westus3" },
+    { label: "centralus 爱荷华", value: "centralus" },
+    { label: "northeurope 都柏林", value: "northeurope" },
     { label: "westeurope 荷兰", value: "westeurope" },
+    { label: "uksouth 伦敦", value: "uksouth" },
+    { label: "francecentral 巴黎", value: "francecentral" },
+    { label: "germanywestcentral 法兰克福", value: "germanywestcentral" },
+    { label: "swedencentral 斯德哥尔摩", value: "swedencentral" },
+    { label: "switzerlandnorth 苏黎世", value: "switzerlandnorth" },
+    { label: "japaneast 东京", value: "japaneast" },
+    { label: "japanwest 大阪", value: "japanwest" },
+    { label: "koreacentral 首尔", value: "koreacentral" },
+    { label: "southeastasia 新加坡", value: "southeastasia" },
+    { label: "eastasia 香港", value: "eastasia" },
+    { label: "australiaeast 悉尼", value: "australiaeast" },
+    { label: "centralindia 浦那", value: "centralindia" },
+    { label: "uaenorth 迪拜", value: "uaenorth" },
+    { label: "brazilsouth 圣保罗", value: "brazilsouth" },
+    { label: "canadacentral 多伦多", value: "canadacentral" },
+    { label: "southafricanorth 约翰内斯堡", value: "southafricanorth" },
   ],
 };
 
@@ -121,6 +139,20 @@ export const GCP_IMAGES: ImagePreset[] = [
   { label: "Ubuntu 24.04 LTS", value: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64", ssh_user: "ubuntu" },
   { label: "Rocky Linux 9", value: "projects/rocky-linux-cloud/global/images/family/rocky-linux-9", ssh_user: "rocky" },
   { label: "CentOS Stream 9", value: "projects/centos-cloud/global/images/family/centos-stream-9", ssh_user: "" },
+];
+
+export const ORACLE_IMAGES: ImagePreset[] = [
+  { label: "Oracle Linux 8（别名）", value: "oracle-8", ssh_user: "opc" },
+  { label: "Oracle Linux 9（别名）", value: "oracle-9", ssh_user: "opc" },
+  { label: "Ubuntu 22.04 LTS（别名）", value: "ubuntu-22.04", ssh_user: "ubuntu" },
+  { label: "Ubuntu 24.04 LTS（别名）", value: "ubuntu-24.04", ssh_user: "ubuntu" },
+];
+
+export const AZURE_IMAGES: ImagePreset[] = [
+  { label: "Ubuntu 22.04 LTS（别名）", value: "ubuntu-22.04", ssh_user: "azureuser" },
+  { label: "Ubuntu 24.04 LTS（别名）", value: "ubuntu-24.04", ssh_user: "azureuser" },
+  { label: "Debian 12（别名）", value: "debian-12", ssh_user: "azureuser" },
+  { label: "Rocky Linux 9（别名）", value: "rocky-9", ssh_user: "azureuser" },
 ];
 
 // 实例规格预设
