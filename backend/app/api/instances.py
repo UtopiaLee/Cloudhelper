@@ -280,21 +280,96 @@ ClientAliveInterval 60
 ClientAliveCountMax 3
 """
 
-    return f"""#cloud-config
-ssh_pwauth: true
+    accounts = ["root", "ec2-user", "ubuntu", "debian", "admin",
+                "centos", "rocky", "opc", "fedora"]
+    runcmd = [
+        # 删除任何 sshd_config.d/*.conf（Ubuntu/Debian 经常用它禁掉密码登录）
+        "bash -c 'rm -f /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true'",
+        # 验证 sshd 配置语法
+        "bash -c 'sshd -t 2>&1 | tee /var/log/cloudhelper-sshd-check.log'",
+        # 重启 sshd（兼容多种发行版的 service 名）
+        "bash -c 'systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || service ssh restart || service sshd restart || true'",
+        # 标记完成
+        "bash -c 'echo \"$(date) cloudhelper userdata done\" >> /var/log/cloudhelper-init.log'",
+    ]
+    cloud_config = {
+        "ssh_pwauth": True,
+        "disable_root": False,
+        "chpasswd": {
+            "expire": False,
+            "list": [f"{user}:{password}" for user in accounts],
+        },
+        "write_files": [
+            {
+                "path": "/etc/ssh/sshd_config",
+                "permissions": "0644",
+                "owner": "root:root",
+                "content": sshd_config,
+            }
+        ],
+        "runcmd": runcmd,
+    }
+    return "#cloud-config\n" + _dump_cloud_config(cloud_config, sshd_config, accounts, password)
+
+
+def _indent(text: str, spaces: int) -> str:
+    """每行前面加 N 个空格（YAML 块标量缩进）。"""
+    pad = " " * spaces
+    return "\n".join(pad + line for line in text.splitlines())
+
+
+def _yaml_dq(s: str) -> str:
+    """把任意字符串编码成 YAML 双引号标量（手写后备路径用）。
+
+    双引号标量里只有反斜杠和双引号必须转义，控制字符用 \\n/\\xXX，
+    其余（含空格、冒号、# 等 YAML 指示符、非 ASCII）原样保留即可。
+    这样密码里出现 : 空格 换行 引号 等都不会破坏 YAML。
+    """
+    out = ['"']
+    for ch in s:
+        code = ord(ch)
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif code < 0x20 or code == 0x7F:
+            out.append("\\x%02X" % code)
+        else:
+            out.append(ch)
+    out.append('"')
+    return "".join(out)
+
+
+def _dump_cloud_config(cloud_config: dict, sshd_config: str,
+                       accounts: list[str], password: str) -> str:
+    """把 cloud-config dict 序列化成合法 YAML。
+
+    优先用 PyYAML 的 safe_dump（保证任意密码字符都被正确转义）；
+    若运行环境没有 PyYAML，则手写一份等价 YAML，并用 _yaml_dq 对密码
+    做双引号转义，避免含 ':' / 空格 / 换行 的密码破坏 chpasswd 块。
+    """
+    try:
+        import yaml
+    except ImportError:
+        yaml = None
+    if yaml is not None:
+        return yaml.safe_dump(
+            cloud_config, default_flow_style=False,
+            sort_keys=False, allow_unicode=True, width=4096,
+        )
+    pw_lines = "\n".join(f"    - {_yaml_dq(f'{user}:{password}')}" for user in accounts)
+    return f"""ssh_pwauth: true
 disable_root: false
 chpasswd:
   expire: false
-  list: |
-    root:{password}
-    ec2-user:{password}
-    ubuntu:{password}
-    debian:{password}
-    admin:{password}
-    centos:{password}
-    rocky:{password}
-    opc:{password}
-    fedora:{password}
+  list:
+{pw_lines}
 
 write_files:
   - path: /etc/ssh/sshd_config
@@ -304,21 +379,11 @@ write_files:
 {_indent(sshd_config, 6)}
 
 runcmd:
-  # 删除任何 sshd_config.d/*.conf（Ubuntu/Debian 经常用它禁掉密码登录）
   - bash -c 'rm -f /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true'
-  # 验证 sshd 配置语法
   - bash -c 'sshd -t 2>&1 | tee /var/log/cloudhelper-sshd-check.log'
-  # 重启 sshd（兼容多种发行版的 service 名）
   - bash -c 'systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || service ssh restart || service sshd restart || true'
-  # 标记完成
   - bash -c 'echo "$(date) cloudhelper userdata done" >> /var/log/cloudhelper-init.log'
 """
-
-
-def _indent(text: str, spaces: int) -> str:
-    """每行前面加 N 个空格（YAML 块标量缩进）。"""
-    pad = " " * spaces
-    return "\n".join(pad + line for line in text.splitlines())
 
 
 @router.post("/{instance_id}/force-start")

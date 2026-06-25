@@ -1,5 +1,6 @@
 """跨账号视图：dashboard 聚合 + fleet list + 批量操作。"""
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
@@ -18,6 +19,21 @@ router = APIRouter()
 
 def _ym() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def _wait_until_stopped(provider, inst_id: str, region: str, zone: str,
+                        timeout: float = 180.0, interval: float = 5.0) -> None:
+    """轮询直到实例进入 stopped 终态。各 provider 的 get_instance 都把停止终态归一为 "stopped"
+    （AWS 返回原始 EC2 state，终态同样是 "stopped"）。用于 restart：先停稳再启动，避免
+    stop->start 竞争触发 IncorrectInstanceState。超时则抛错，由调用方记为该项失败。"""
+    deadline = time.monotonic() + timeout
+    while True:
+        state = provider.get_instance(inst_id, region, zone).state
+        if state == "stopped":
+            return
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"轮询 {timeout:.0f}s 后实例仍未停稳（当前状态: {state}）")
+        time.sleep(interval)
 
 
 @router.get("/dashboard", response_model=DashboardSummary)
@@ -125,12 +141,15 @@ def fleet_instances(
 @router.post("/bulk")
 def bulk_action(payload: BulkAction, db: Session = Depends(get_db)):
     def task(target: dict):
-        acc_id = int(target["account_id"])
+        try:
+            acc_id = int(target["account_id"])
+            inst_id = target["instance_id"]
+        except (KeyError, TypeError, ValueError):
+            return {"target": target, "ok": False, "error": "target 缺少/非法 account_id 或 instance_id"}
         with SessionLocal() as s:
             acc = s.get(CloudAccount, acc_id)
             if not acc:
                 return {"target": target, "ok": False, "error": "account not found"}
-            inst_id = target["instance_id"]
             region = target.get("region", "")
             zone = target.get("zone", "")
             try:
@@ -174,6 +193,7 @@ def bulk_action(payload: BulkAction, db: Session = Depends(get_db)):
                     provider.stop_instance(inst_id, region, zone)
                 elif payload.action == "restart":
                     provider.stop_instance(inst_id, region, zone)
+                    _wait_until_stopped(provider, inst_id, region, zone)
                     provider.start_instance(inst_id, region, zone)
                 elif payload.action == "terminate":
                     provider.terminate_instance(inst_id, region, zone)

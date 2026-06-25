@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.auth import revoke_all_sessions, verify_credentials
@@ -71,6 +71,15 @@ class UpdateAuthIn(BaseModel):
     current_password: str = ""
     new_username: str = Field(min_length=1, max_length=64)
     new_password: str = Field(min_length=6, max_length=256)
+
+    @field_validator("new_username", "new_password")
+    @classmethod
+    def _no_control_chars(cls, v: str) -> str:
+        if v != v.strip():
+            raise ValueError("不能以空白字符开头或结尾")
+        if any(ord(c) < 0x20 or ord(c) == 0x7F for c in v):
+            raise ValueError("不能包含换行符或控制字符")
+        return v
 
 
 class RotateKnockOut(BaseModel):

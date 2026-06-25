@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,6 +18,10 @@ def _validate_payload(payload: ScheduleIn) -> None:
     if payload.trigger_type == "cron":
         if not payload.cron or len(payload.cron.split()) != 5:
             raise HTTPException(400, "cron 触发必须填写 5 段 cron 表达式")
+        try:
+            CronTrigger.from_crontab(payload.cron)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, f"cron 表达式不合法: {exc}")
     elif payload.trigger_type == "date":
         if payload.run_at is None:
             raise HTTPException(400, "date 触发必须指定 run_at")

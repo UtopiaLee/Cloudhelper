@@ -39,7 +39,24 @@ export default function AccountsPage() {
   });
 
   const exportAll = useMutation({
-    mutationFn: async () => (await api.get<any>("/accounts/export")).data,
+    mutationFn: async () => {
+      // 导出含明文凭据，后端要求重新鉴权：让用户再次输入密码（或 token）。
+      const info = (await api.get<{ auth_required: boolean; username_auth: boolean }>("/auth/info")).data;
+      let creds: Record<string, string> = {};
+      if (info.auth_required) {
+        if (info.username_auth) {
+          const username = window.prompt("导出含明文凭据，请输入用户名以确认：") || "";
+          const password = window.prompt("请输入密码：") || "";
+          if (!username || !password) throw new Error("已取消导出");
+          creds = { username, password };
+        } else {
+          const token = window.prompt("导出含明文凭据，请输入访问 token 以确认：") || "";
+          if (!token) throw new Error("已取消导出");
+          creds = { token };
+        }
+      }
+      return (await api.post<any>("/accounts/export", creds)).data;
+    },
     onSuccess: (data) => {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);

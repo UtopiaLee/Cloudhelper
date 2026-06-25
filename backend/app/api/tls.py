@@ -27,6 +27,20 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# PEM 证书/私钥都很小（通常 <64KB）；上限留足余量并防止恶意大文件耗尽内存。
+_MAX_PEM_BYTES = 256 * 1024
+
+
+async def _read_capped(upload: UploadFile, label: str) -> bytes:
+    """读取上传文件，超过 _MAX_PEM_BYTES 立即拒绝，避免无界读入内存。"""
+    size = getattr(upload, "size", None)
+    if size is not None and size > _MAX_PEM_BYTES:
+        raise HTTPException(400, f"{label}过大（上限 {_MAX_PEM_BYTES // 1024}KB）")
+    data = await upload.read(_MAX_PEM_BYTES + 1)
+    if len(data) > _MAX_PEM_BYTES:
+        raise HTTPException(400, f"{label}过大（上限 {_MAX_PEM_BYTES // 1024}KB）")
+    return data
+
 
 def _ssl_dir() -> Path:
     p = get_settings().data_dir / "ssl"
@@ -85,8 +99,8 @@ async def upload_tls(
     key: UploadFile = File(...),
 ) -> TLSStatus:
     """上传证书 + 私钥。两个都是 PEM 格式。"""
-    cert_bytes = await cert.read()
-    key_bytes = await key.read()
+    cert_bytes = await _read_capped(cert, "证书文件")
+    key_bytes = await _read_capped(key, "私钥文件")
 
     # 简单校验
     if not re.search(rb"-----BEGIN CERTIFICATE-----", cert_bytes):

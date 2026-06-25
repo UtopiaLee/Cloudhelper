@@ -5,11 +5,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.auth import _check_static_token, auth_enabled, verify_credentials
 from app.core.crypto import get_crypto
 from app.core.db import get_db
 from app.models import CloudAccount
 from app.providers import make_provider
 from app.schemas import AccountCreate, AccountOut
+from app.services.audit import audit
 
 router = APIRouter()
 
@@ -62,7 +64,15 @@ def update_account(account_id: int, payload: AccountCreate, db: Session = Depend
     acc = db.get(CloudAccount, account_id)
     if not acc:
         raise HTTPException(404, "账户不存在")
+    dup = db.scalar(
+        select(CloudAccount).where(
+            CloudAccount.name == payload.name, CloudAccount.id != account_id
+        )
+    )
+    if dup:
+        raise HTTPException(400, "账户名已存在")
     acc.name = payload.name
+    acc.provider = payload.provider
     acc.default_region = payload.default_region
     acc.group_tag = payload.group_tag
     acc.note = payload.note
@@ -91,12 +101,32 @@ def test_account(account_id: int, db: Session = Depends(get_db)):
 
 # ---------- 批量导入 / 导出 ----------
 
-@router.get("/export")
-def export_accounts(db: Session = Depends(get_db)) -> dict[str, Any]:
+@router.post("/export")
+def export_accounts(
+    body: dict[str, Any] = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
     """导出所有账号为 JSON（含明文凭据）。
 
     !! 警告：返回内容包含明文凭据，调用方需自行妥善保管。
+
+    需重新鉴权：body 提供 username/password 或 token（静态 token），
+    任一通过方可导出，每次导出都会写审计日志。
     """
+    if auth_enabled():
+        username = str(body.get("username") or "")
+        password = str(body.get("password") or "")
+        token = str(body.get("token") or "")
+        ok = False
+        if username and password:
+            ok = verify_credentials(username, password)
+        elif token:
+            ok = _check_static_token(token)
+        if not ok:
+            audit(db, action="account.export", target="all", ok=False,
+                  error="reauth_failed")
+            raise HTTPException(401, "导出需重新鉴权：请提供正确的用户名/密码或 token")
+
     crypto = get_crypto()
     items: list[dict[str, Any]] = []
     for a in db.scalars(select(CloudAccount).order_by(CloudAccount.id)).all():
@@ -116,6 +146,7 @@ def export_accounts(db: Session = Depends(get_db)) -> dict[str, Any]:
             "credit_expires_at": a.credit_expires_at.isoformat() if a.credit_expires_at else None,
             "credentials": credentials,
         })
+    audit(db, action="account.export", target="all", detail={"count": len(items)})
     from datetime import datetime as _dt
     return {
         "version": 1,
@@ -171,13 +202,14 @@ def import_accounts(
                 except ValueError:
                     pass
 
+            _mt = item.get("monthly_traffic_gb")
             payload = {
                 "name": name,
                 "provider": provider,
                 "default_region": (item.get("default_region") or "").strip(),
                 "group_tag": (item.get("group_tag") or "").strip(),
                 "note": (item.get("note") or "").strip(),
-                "monthly_traffic_gb": float(item.get("monthly_traffic_gb") or 1.0),
+                "monthly_traffic_gb": float(_mt) if _mt is not None else 1.0,
                 "credit_total_usd": float(item.get("credit_total_usd") or 0),
                 "credit_used_usd": float(item.get("credit_used_usd") or 0),
                 "credit_expires_at": expires_date,
