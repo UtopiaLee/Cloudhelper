@@ -9,7 +9,7 @@ APScheduler==3.10.4
 boto3==1.35.40
 google-cloud-compute==1.19.2
 google-cloud-bigquery==3.25.0
-oci==2.129.0
+oci==2.180.0
 azure-identity==1.18.0
 azure-mgmt-compute==33.0.0
 azure-mgmt-network==27.0.0
