@@ -1,24 +1,29 @@
 import axios from "axios";
 
-const TOKEN_KEY = "ch_token";
+// 会话凭据走 httponly+secure cookie（ch_token），JS 读不到也不再存 localStorage。
+// 这里只存一个非敏感的“已登录”标记，用于驱动前端的登录态 UI；真正的鉴权是 cookie。
+const AUTH_FLAG_KEY = "ch_authed";
 const KNOCK_KEY = "ch_knock";
 
 export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || "";
+  return localStorage.getItem(AUTH_FLAG_KEY) || "";
 }
 export function setToken(t: string): void {
-  if (t) localStorage.setItem(TOKEN_KEY, t);
-  else localStorage.removeItem(TOKEN_KEY);
+  // 不持久化真实 token；仅记录登录态标记（登录响应里 token 非空 = 已登录）。
+  if (t) localStorage.setItem(AUTH_FLAG_KEY, "1");
+  else localStorage.removeItem(AUTH_FLAG_KEY);
 }
 export function getKnock(): string {
-  return localStorage.getItem(KNOCK_KEY) || "";
+  return sessionStorage.getItem(KNOCK_KEY) || localStorage.getItem(KNOCK_KEY) || "";
 }
 export function setKnock(s: string): void {
-  if (s) localStorage.setItem(KNOCK_KEY, s);
-  else localStorage.removeItem(KNOCK_KEY);
+  // knock 改存 sessionStorage（随标签页关闭失效），并清掉历史遗留的 localStorage 值。
+  localStorage.removeItem(KNOCK_KEY);
+  if (s) sessionStorage.setItem(KNOCK_KEY, s);
+  else sessionStorage.removeItem(KNOCK_KEY);
 }
 
-// 启动时从 URL ?key= 抓 secret 并存入 localStorage
+// 启动时从 URL ?key= 抓 secret 并存入 sessionStorage（一次性：抓到即从 URL 抹掉）
 export function captureKnockFromUrl(): boolean {
   const params = new URLSearchParams(window.location.search);
   const k = params.get("key") || params.get("knock");
@@ -38,11 +43,13 @@ export function captureKnockFromUrl(): boolean {
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || "/api",
   timeout: 120_000,
+  // 让浏览器自动带上 httponly cookie（同源），鉴权不再依赖 JS 注入的 token 头。
+  withCredentials: true,
 });
 
 api.interceptors.request.use((cfg) => {
-  const t = getToken();
-  if (t) cfg.headers["X-Auth-Token"] = t;
+  // 不再注入 X-Auth-Token：浏览器会自动带 ch_token cookie。
+  // knock 仍以请求头发送（不进 URL / 日志）。
   const k = getKnock();
   if (k) cfg.headers["X-Knock-Secret"] = k;
   return cfg;

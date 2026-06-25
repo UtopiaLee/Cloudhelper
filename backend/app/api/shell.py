@@ -74,7 +74,10 @@ async def ws_shell(ws: WebSocket, account_id: int, instance_id: str, token: str 
     if not check_knock(knock):
         await ws.close(code=1008, reason="not found")
         return
-    if not ws_check_token(token):
+    # 浏览器同源 WS 握手会自动带上 httponly cookie，优先用它；query token 仅为非浏览器回退。
+    # 鉴权未配置时 ws_check_token 返回 False（fail closed），不会无鉴权开 root shell。
+    cookie_token = ws.cookies.get("ch_token", "")
+    if not ws_check_token(token, cookie_token):
         await ws.close(code=1008, reason="unauthorized")
         return
     await ws.accept()

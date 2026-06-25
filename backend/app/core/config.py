@@ -47,6 +47,11 @@ def update_env_vars(updates: dict[str, str]) -> Path:
     env_path = _resolve_env_path()
     updates = {k: v for k, v in updates.items() if k and v is not None}
 
+    # 换行符会被注入为额外的 .env 行，直接拒绝
+    for k, v in updates.items():
+        if "\r" in v or "\n" in v:
+            raise ValueError(f"环境变量 {k} 的值不能包含换行符")
+
     lines: list[str] = []
     if env_path.exists():
         lines = env_path.read_text(encoding="utf-8").splitlines()

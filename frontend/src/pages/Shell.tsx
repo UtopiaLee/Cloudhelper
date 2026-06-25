@@ -263,6 +263,22 @@ function ShellTerm({ tab, active }: { tab: ShellTab; active: boolean }) {
       console.log("[shell] connect skipped: term not ready");
       return;
     }
+    // #27 不在明文 HTTP 下打开带凭据的终端：SSH 密码会经 WS 明文传输，
+    // 且鉴权 cookie 为 secure（只走 HTTPS）。localhost 开发或显式 dev override 放行。
+    const insecure = location.protocol !== "https:";
+    const devOverride =
+      import.meta.env.VITE_ALLOW_INSECURE_SHELL === "1" ||
+      location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1";
+    if (insecure && !devOverride) {
+      setStatus("error");
+      setErrMsg("拒绝在非 HTTPS 下打开终端（密码会明文传输）。请用 HTTPS 访问。");
+      setNeedPwd(false);
+      term.clear();
+      term.writeln(`\x1b[31m✗ 当前非 HTTPS 访问，已拒绝打开终端以保护 SSH 密码。\x1b[0m`);
+      term.writeln(`\x1b[33m  请通过 https:// 访问；本地开发可设 VITE_ALLOW_INSECURE_SHELL=1。\x1b[0m`);
+      return;
+    }
     connectingRef.current = true;
     setStatus("connecting");
     setNeedPwd(false);
@@ -288,11 +304,12 @@ function ShellTerm({ tab, active }: { tab: ShellTab; active: boolean }) {
       }
     }
 
+    // 鉴权依赖 httponly cookie：浏览器同源 WS 握手会自动带上 ch_token，
+    // 不再把 token 放进 URL（避免泄露到 nginx 日志 / 浏览器历史）。
+    // knock 是路径混淆口令（非凭据），仍走 query 以通过后端路径保护。
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const token = localStorage.getItem("ch_token") || "";
-    const knock = localStorage.getItem("ch_knock") || "";
+    const knock = sessionStorage.getItem("ch_knock") || localStorage.getItem("ch_knock") || "";
     const q = new URLSearchParams();
-    if (token) q.set("token", token);
     if (knock) q.set("knock", knock);
     const qs = q.toString() ? `?${q.toString()}` : "";
     const url = `${proto}://${location.host}/api/ws/instances/${tab.account_id}/${tab.instance_id}/shell${qs}`;

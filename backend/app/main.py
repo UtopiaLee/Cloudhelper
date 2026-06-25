@@ -17,9 +17,26 @@ from app.core.scheduler import start as sched_start
 
 settings = get_settings()
 
+# 弱主密钥会让任何拿到 ./data 的人离线推导 Fernet key，启动时直接拒绝。
+_PLACEHOLDER_MASTER_PASSWORDS = {"change-me-please", "change-this-to-a-long-random-string"}
+_MIN_MASTER_PASSWORD_LEN = 12
+
+
+def _guard_master_password(password: str) -> None:
+    pw = (password or "").strip()
+    if not pw or pw in _PLACEHOLDER_MASTER_PASSWORDS:
+        raise RuntimeError(
+            "MASTER_PASSWORD 未设置或仍为占位符。请在 .env 中设置一个强随机主密钥后再启动。"
+        )
+    if len(pw) < _MIN_MASTER_PASSWORD_LEN:
+        raise RuntimeError(
+            f"MASTER_PASSWORD 太短（至少 {_MIN_MASTER_PASSWORD_LEN} 个字符），请改用更强的主密钥。"
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _guard_master_password(settings.master_password)
     init_crypto(settings.master_password, settings.data_dir)
     init_knock()
     Base.metadata.create_all(bind=engine)

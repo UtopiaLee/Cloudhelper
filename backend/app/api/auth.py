@@ -20,13 +20,9 @@ router = APIRouter()
 
 
 def _client_ip(request: Request) -> str:
-    # 兼容反代后取真实 IP
-    xff = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    if xff:
-        return xff
-    real = request.headers.get("x-real-ip", "").strip()
-    if real:
-        return real
+    # 只信任直连对端 IP 作为限流/锁定的 key。
+    # X-Forwarded-For / X-Real-IP 由客户端可控，信任它会让攻击者轮换该头绕过
+    # 每 IP 的登录限流与锁定。没有可信反代配置时，固定用 request.client.host。
     return request.client.host if request.client else "unknown"
 
 
@@ -95,13 +91,18 @@ def login(payload: LoginIn, request: Request, response: Response,
     # 4. 成功
     record_success(ip)
     if payload.username:
-        tok = issue_session()
-        audit(db, action="auth.login", target=ip,
-              detail={"username": payload.username, "method": "password"}, ok=True)
+        method = "password"
     else:
-        tok = payload.token
-        audit(db, action="auth.login", target=ip, detail={"method": "token"}, ok=True)
-    response.set_cookie("ch_token", tok, httponly=True, samesite="lax", max_age=86400 * 30)
+        method = "token"
+    # 无论哪种登录方式都签发短随机 session token 放进 httponly cookie，
+    # 避免把静态 ACCESS_TOKEN 回写到 cookie / 响应体（减少其在链路里出现的次数）。
+    tok = issue_session()
+    audit(db, action="auth.login", target=ip,
+          detail={"username": payload.username, "method": method}, ok=True)
+    response.set_cookie(
+        "ch_token", tok,
+        httponly=True, secure=True, samesite="strict", max_age=86400 * 30,
+    )
     return LoginOut(ok=True, token=tok)
 
 

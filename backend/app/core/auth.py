@@ -44,6 +44,19 @@ PUBLIC_PATHS = {
 _SESSIONS: dict[str, float] = {}
 _SESSION_TTL = 86400 * 30  # 30 天
 
+_warned_auth_disabled = False
+
+
+def _warn_auth_disabled_once() -> None:
+    global _warned_auth_disabled
+    if _warned_auth_disabled:
+        return
+    _warned_auth_disabled = True
+    log.warning("=" * 72)
+    log.warning("鉴权未配置（AUTH_USERNAME / ACCESS_TOKEN 均为空）——HTTP 接口对外开放！")
+    log.warning("请在 .env 设置 AUTH_USERNAME+AUTH_PASSWORD 或 ACCESS_TOKEN。WS 终端已 fail-closed。")
+    log.warning("=" * 72)
+
 
 def auth_enabled() -> bool:
     s = get_settings()
@@ -105,6 +118,7 @@ def _extract_token(request: Request) -> str:
 class TokenAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not auth_enabled():
+            _warn_auth_disabled_once()
             return await call_next(request)
         path = request.url.path
         if not path.startswith("/api"):
@@ -118,10 +132,21 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         return JSONResponse(status_code=401, content={"detail": "未授权：请登录"})
 
 
-def ws_check_token(query_token: str) -> bool:
-    """WebSocket 路由的鉴权。同时支持 session token 和 static token。"""
+def ws_check_token(query_token: str, cookie_token: str = "") -> bool:
+    """WebSocket 路由的鉴权。同时支持 session token 和 static token。
+
+    优先用 httponly cookie 里的 token（浏览器同源 WS 握手自动带上），
+    query_token 仅作为非浏览器客户端的回退。
+
+    当鉴权未配置时**拒绝**（fail closed）：WS 终端会开 root shell，
+    绝不能在零鉴权下放行；HTTP 中间件的开放行为不受此影响。
+    """
     if not auth_enabled():
+        return False
+    cookie_token = (cookie_token or "").strip()
+    if cookie_token and (_check_session(cookie_token) or _check_static_token(cookie_token)):
         return True
+    query_token = (query_token or "").strip()
     if not query_token:
         return False
     return _check_session(query_token) or _check_static_token(query_token)

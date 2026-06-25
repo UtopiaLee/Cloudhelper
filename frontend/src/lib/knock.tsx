@@ -82,10 +82,9 @@ export function KnockGate({ onSuccess }: { onSuccess: () => void }) {
 
         <div className="p-6 space-y-3">
           <div className="text-xs text-slate-600 bg-amber-50/60 border border-amber-200/60 rounded-md p-3">
-            后端启动时会在控制台打印当前 secret，类似：<br/>
-            <code className="font-mono text-[11px] text-amber-700">KNOCK_SECRET 未配置，本次启动随机生成：xxxxx</code><br/>
-            <br/>
-            也可以直接在 URL 后加 <code className="font-mono text-[11px]">?key=你的密钥</code> 自动填入。
+            后端启动时若未配置 KNOCK_SECRET 会在控制台打印当前 secret（仅显示末 4 位）。<br/>
+            推荐在 <code className="font-mono text-[11px]">.env</code> 设置固定的 <code className="font-mono text-[11px]">KNOCK_SECRET</code>，<br/>
+            然后把完整密钥粘贴到下方输入框。
           </div>
 
           <div>
@@ -111,7 +110,7 @@ export function KnockGate({ onSuccess }: { onSuccess: () => void }) {
           </button>
 
           <div className="text-[11px] text-slate-400 text-center">
-            密钥保存在浏览器本地，重启浏览器仍有效；后端进程重启会换新密钥
+            密钥仅保存在当前标签页会话，关闭标签页后需重新输入；后端进程重启会换新密钥
           </div>
         </div>
       </motion.div>

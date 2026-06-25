@@ -53,11 +53,11 @@ def init_knock() -> str:
         log.info("knock secret: 使用 .env 配置的 KNOCK_SECRET")
     else:
         _current_secret = secrets.token_urlsafe(24)
+        masked = "****" + _current_secret[-4:]
         log.warning("=" * 72)
-        log.warning("KNOCK_SECRET 未配置，本次启动随机生成：")
-        log.warning("  %s", _current_secret)
-        log.warning("访问 URL：http://localhost:5173/?key=%s", _current_secret)
-        log.warning("（重启后失效，要持久化请在 .env 设 KNOCK_SECRET=...）")
+        log.warning("KNOCK_SECRET 未配置，本次启动随机生成（仅显示末 4 位）：%s", masked)
+        log.warning("请在 .env 设置固定的 KNOCK_SECRET= 以持久化（重启后当前值即失效）。")
+        log.warning("完整值不打印到日志：请在前端“访问受限”页输入，或改用 .env 配置。")
         log.warning("=" * 72)
     return _current_secret
 
