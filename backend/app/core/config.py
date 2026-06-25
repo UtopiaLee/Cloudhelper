@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:8080,http://localhost:5173", alias="CORS_ORIGINS")
     tz: str = Field(default="Asia/Shanghai", alias="TZ")
     notify_webhook_url: str = Field(default="", alias="NOTIFY_WEBHOOK_URL")
+    cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
     data_dir: Path = Field(default=Path("./data"))
 
     @property

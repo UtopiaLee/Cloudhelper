@@ -15,6 +15,7 @@ from app.services.audit import audit
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from app.core.db import get_db
+from app.core.config import get_settings
 
 router = APIRouter()
 
@@ -101,7 +102,7 @@ def login(payload: LoginIn, request: Request, response: Response,
           detail={"username": payload.username, "method": method}, ok=True)
     response.set_cookie(
         "ch_token", tok,
-        httponly=True, secure=True, samesite="lax", max_age=86400 * 30,
+        httponly=True, secure=get_settings().cookie_secure, samesite="lax", max_age=86400 * 30,
     )
     return LoginOut(ok=True, token=tok)
 
