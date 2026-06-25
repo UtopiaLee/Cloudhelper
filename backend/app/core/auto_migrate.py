@@ -56,6 +56,21 @@ def _sql_default(col) -> str:
     return ""
 
 
+def _notnull_fallback_default(col, sql_type: str) -> str:
+    """SQLite ALTER TABLE ADD COLUMN 加 NOT NULL 列必须带默认值。
+    按列的 SQL 类型选一个安全的空值，避免给 JSON/数值列塞入 '' 导致后续解析崩溃。
+    """
+    if sql_type in ("INTEGER", "BOOLEAN", "REAL"):
+        return "DEFAULT 0"
+    if sql_type == "JSON":
+        # 区分 dict / list 工厂，给出合法的空 JSON
+        factory = getattr(col.default, "arg", None) if col.default is not None else None
+        return "DEFAULT '[]'" if factory is list else "DEFAULT '{}'"
+    if sql_type in ("DATETIME", "DATE"):
+        return "DEFAULT CURRENT_TIMESTAMP"
+    return "DEFAULT ''"
+
+
 def auto_migrate(engine: Engine) -> None:
     """对所有 Base.metadata.tables 同步缺失列。"""
     inspector = inspect(engine)
@@ -73,7 +88,7 @@ def auto_migrate(engine: Engine) -> None:
                 nullable = "" if col.nullable else " NOT NULL"
                 # SQLite ALTER TABLE ADD COLUMN 不允许 NOT NULL 无默认值
                 if not col.nullable and not default:
-                    default = "DEFAULT ''"
+                    default = _notnull_fallback_default(col, sql_type)
                 stmt = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {sql_type}{nullable} {default}'.strip()
                 log.info("auto-migrate: %s", stmt)
                 conn.execute(text(stmt))
