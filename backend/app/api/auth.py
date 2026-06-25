@@ -101,7 +101,7 @@ def login(payload: LoginIn, request: Request, response: Response,
           detail={"username": payload.username, "method": method}, ok=True)
     response.set_cookie(
         "ch_token", tok,
-        httponly=True, secure=True, samesite="strict", max_age=86400 * 30,
+        httponly=True, secure=True, samesite="lax", max_age=86400 * 30,
     )
     return LoginOut(ok=True, token=tok)
 
