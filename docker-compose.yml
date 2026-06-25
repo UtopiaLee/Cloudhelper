@@ -5,6 +5,17 @@ services:
     image: cloudhelper-backend:latest
     container_name: cloudhelper-backend
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    # entrypoint 以 root 修正 /data 属主再用 gosu 降权，需要以下最小权限：
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     env_file:
       - .env
     environment:
@@ -32,11 +43,25 @@ services:
     image: cloudhelper-frontend:latest
     container_name: cloudhelper-frontend
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    # nginx master 以 root 起、worker 降到 nginx 用户并绑定 80，需要以下最小权限：
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      # 默认只绑定本机回环：明文 HTTP，不对外网发布。
+      # 对外请用 docker-compose.https.yml (Caddy 自动 TLS) 或
+      # docker-compose.tls.yml (自带证书) overlay，走真正的 HTTPS。
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8080}:80"
     networks:
       - cloudhelper
 

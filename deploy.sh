@@ -137,8 +137,17 @@ ensure_docker() {
       $SUDO rc-update add docker boot || true
       $SUDO service docker start || true
     else
-      curl -fsSL https://get.docker.com | $SUDO sh \
-        || die "Docker 安装失败。请按 https://docs.docker.com/engine/install/ 手动安装后重试"
+      # 不直接 curl | sh：先下载官方安装脚本到临时文件，提示用户，再执行。
+      # 这样脚本内容落盘可审计，避免管道直跑带来的供应链风险。
+      local docker_script
+      docker_script="$(mktemp)"
+      log "下载 Docker 官方安装脚本到 $docker_script（执行前可中断检查）"
+      curl -fsSL https://get.docker.com -o "$docker_script" \
+        || die "下载 Docker 安装脚本失败。请按 https://docs.docker.com/engine/install/ 手动安装后重试"
+      warn "即将以 root 执行 $docker_script（来源 get.docker.com）。如需审计请按 Ctrl+C 中断。"
+      $SUDO sh "$docker_script" \
+        || { rm -f "$docker_script"; die "Docker 安装失败。请按 https://docs.docker.com/engine/install/ 手动安装后重试"; }
+      rm -f "$docker_script"
     fi
   fi
 
