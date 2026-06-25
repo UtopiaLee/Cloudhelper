@@ -21,7 +21,7 @@ RUN pip install -r requirements.txt
 # 再 COPY 应用代码
 COPY app ./app
 COPY alembic.ini ./
-COPY migrations ./migrations 2>/dev/null || true
+COPY migrations ./migrations
 
 # 数据目录
 RUN mkdir -p /data
