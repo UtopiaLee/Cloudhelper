@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.models import BillingTick, CloudAccount, InstanceState
-from app.services.pricing import get_price
+from app.services.pricing import get_price_or_unknown
 
 log = logging.getLogger(__name__)
 
@@ -46,24 +46,33 @@ def tick_all() -> dict:
 
 
 def _tick_account(db: Session, acc: CloudAccount) -> tuple[float, int, dict]:
-    """计算这个账号当前 tick 的成本。"""
+    """计算这个账号当前 tick 的成本。
+
+    detail = {instance_id: per_tick_cost, ...}，外加两个保留键：
+      _unpriced:   价格查不到的 instance_id 列表（被当成 0 会低估）
+      _incomplete: 是否存在 unpriced 实例（True 时本月推算偏低，UI 应提示）
+    """
     states = db.scalars(select(InstanceState).where(
         InstanceState.account_id == acc.id,
         InstanceState.state == "running",
     )).all()
     total = 0.0
-    detail: dict[str, float] = {}
+    detail: dict[str, object] = {}
+    unpriced: list[str] = []
     for st in states:
         if not st.instance_type:
             continue
-        try:
-            hourly = get_price(db, acc.provider, st.region, st.instance_type, account=acc)
-        except Exception:
-            hourly = 0.0
+        hourly = get_price_or_unknown(db, acc.provider, st.region, st.instance_type, account=acc)
+        if hourly is None:
+            unpriced.append(st.instance_id)
+            continue
         c = round(hourly * TICK_HOURS, 6)
         if c > 0:
             detail[st.instance_id] = c
             total += c
+    if unpriced:
+        detail["_unpriced"] = unpriced
+        detail["_incomplete"] = True
     return round(total, 6), len(states), detail
 
 

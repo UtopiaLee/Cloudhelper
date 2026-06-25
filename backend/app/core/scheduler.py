@@ -18,11 +18,27 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from sqlalchemy import create_engine
+
 from app.core.config import get_settings
-from app.core.db import engine
 
 log = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _jobstore_engine():
+    """Dedicated engine for the APScheduler jobstore.
+
+    Separate from the request-path engine and given a busy_timeout so that
+    concurrent schedule upserts (request thread) and scheduler writes wait
+    for the lock instead of raising 'database is locked'.
+    """
+    url = settings.database_url
+    if url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False, "timeout": 30}
+    else:
+        connect_args = {}
+    return create_engine(url, connect_args=connect_args, pool_pre_ping=True)
 
 
 def _tz() -> ZoneInfo:
@@ -71,7 +87,7 @@ def get_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is None:
         _scheduler = BackgroundScheduler(
-            jobstores={"default": SQLAlchemyJobStore(engine=engine)},
+            jobstores={"default": SQLAlchemyJobStore(engine=_jobstore_engine())},
             timezone=_tz(),
             job_defaults={
                 "coalesce": True,         # 错过多次只补跑一次

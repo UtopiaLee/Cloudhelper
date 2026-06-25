@@ -258,7 +258,7 @@ class AWSProvider:
     def rotate_public_ip(self, instance_id: str, region: str, zone: str = "") -> str:
         """切换公网 IP。
 
-        EIP：disassociate + release + 重新 allocate + associate（拿到新 IP）
+        EIP：先 allocate + associate(AllowReassociation) 拿到新 IP，确认后再 release 旧 EIP
         无 EIP 自动分配的：stop → start，AWS 会重新分配公网 IP
         """
         ec2 = self._client("ec2", region)
@@ -275,10 +275,29 @@ class AWSProvider:
                 break
 
         if eip_assoc_id:
-            ec2.disassociate_address(AssociationId=eip_assoc_id)
-            ec2.release_address(AllocationId=eip_alloc_id)
+            # 先分配并关联新 EIP（AllowReassociation 直接替换同一实例上的旧关联），
+            # 确认成功后再释放旧 EIP；任一步失败都回滚，绝不让实例丢失公网 IP。
             new = ec2.allocate_address(Domain="vpc")
-            ec2.associate_address(InstanceId=instance_id, AllocationId=new["AllocationId"])
+            new_alloc_id = new["AllocationId"]
+            try:
+                ec2.associate_address(
+                    InstanceId=instance_id,
+                    AllocationId=new_alloc_id,
+                    AllowReassociation=True,
+                )
+            except Exception:
+                # 关联失败：新分配的 EIP 成了孤儿，释放掉；旧 EIP 仍在实例上，无需回滚。
+                try:
+                    ec2.release_address(AllocationId=new_alloc_id)
+                except Exception as rel_err:
+                    log.warning("rollback release new EIP failed: %s", rel_err)
+                raise
+            # 新 IP 已关联，旧 EIP 已被自动解绑，安全释放。
+            try:
+                ec2.release_address(AllocationId=eip_alloc_id)
+            except Exception as rel_err:
+                # 旧 EIP 释放失败不致命（实例已有新 IP），仅记录，避免泄漏一个 EIP。
+                log.warning("release old EIP %s failed: %s", eip_alloc_id, rel_err)
             return new["PublicIp"]
 
         was_running = inst["State"]["Name"] == "running"
@@ -291,6 +310,23 @@ class AWSProvider:
                 InstanceIds=[instance_id], WaiterConfig={"Delay": 5, "MaxAttempts": 60})
         resp2 = ec2.describe_instances(InstanceIds=[instance_id])
         return resp2["Reservations"][0]["Instances"][0].get("PublicIpAddress", "")
+
+    def reboot_instance(self, instance_id: str, region: str, zone: str = "") -> None:
+        self._client("ec2", region).reboot_instances(InstanceIds=[instance_id])
+
+    def wait_stopped(self, instance_id: str, region: str, zone: str = "") -> None:
+        self._client("ec2", region).get_waiter("instance_stopped").wait(
+            InstanceIds=[instance_id], WaiterConfig={"Delay": 5, "MaxAttempts": 60})
+
+    def close(self) -> None:
+        # boto3 客户端按调用临时创建、不持有，无需显式关闭。
+        return None
+
+    def __enter__(self) -> "AWSProvider":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
 
 def _to_instance(i: dict, region: str, vol_size_map: Optional[dict] = None) -> Instance:

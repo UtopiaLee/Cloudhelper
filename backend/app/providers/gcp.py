@@ -273,6 +273,19 @@ class GCPProvider:
             return inst2.network_interfaces[0].access_configs[0].nat_i_p
         return ""
 
+    def reboot_instance(self, instance_id: str, region: str, zone: str = "") -> None:
+        self._instances_client().reset(project=self._project, zone=zone, instance=instance_id).result(timeout=120)
+
+    def close(self) -> None:
+        # compute_v1 客户端按调用临时创建、不持有；credentials 不维持长连接，无需关闭。
+        return None
+
+    def __enter__(self) -> "GCPProvider":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
 
 def _to_instance(inst: Any, zone: str) -> Instance:
     public_ip = ""

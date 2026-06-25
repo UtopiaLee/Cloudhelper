@@ -130,6 +130,11 @@ class OracleProvider:
             self._switch_region(region)
         self._compute.instance_action(instance_id=instance_id, action="SOFTSTOP")
 
+    def reboot_instance(self, instance_id: str, region: str, zone: str = "") -> None:
+        if region != self._region:
+            self._switch_region(region)
+        self._compute.instance_action(instance_id=instance_id, action="SOFTRESET")
+
     def terminate_instance(self, instance_id: str, region: str, zone: str = "") -> None:
         if region != self._region:
             self._switch_region(region)
@@ -381,6 +386,22 @@ class OracleProvider:
             "private_ip_id": getattr(vnic, "private_ip_id", "") or "",
             "nsg_ids": list(getattr(vnic, "nsg_ids", []) or []),
         }
+
+    def close(self) -> None:
+        # OCI 客户端各自持有一个 requests.Session（长连接池），逐个关闭释放 socket。
+        for client in (self._compute, self._network, self._identity):
+            session = getattr(getattr(client, "base_client", None), "session", None)
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+
+    def __enter__(self) -> "OracleProvider":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
 
 def _map_state(state: str) -> str:

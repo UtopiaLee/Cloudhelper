@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import date
 from typing import Optional
 
@@ -30,11 +31,12 @@ def _parse_note_expiry(note: str) -> Optional[date]:
         return None
 
 
-def _already_reminded(db, account_id: int, day_left: int) -> bool:
+def _already_reminded(db, account_id: int, day_left: int, expiry: date) -> bool:
     action = f"account.expiry_remind.{day_left}d"
     row = db.scalar(select(AuditLog.id).where(
         AuditLog.action == action,
         AuditLog.target == str(account_id),
+        AuditLog.detail["expiry"].as_string() == expiry.isoformat(),
     ).limit(1))
     return row is not None
 
@@ -52,7 +54,7 @@ def remind_account_expiry() -> dict:
             days_left = (expiry - today).days
             if days_left not in EXPIRY_REMIND_DAYS:
                 continue
-            if _already_reminded(db, acc.id, days_left):
+            if _already_reminded(db, acc.id, days_left, expiry):
                 continue
 
             msg = (
@@ -69,6 +71,20 @@ def remind_account_expiry() -> dict:
             )
             summary["notified"] += 1
     return summary
+
+
+def _wait_until_stopped(provider, instance_id: str, region: str, zone: str,
+                        timeout: float = 300.0, interval: float = 5.0) -> None:
+    """轮询直到实例进入 stopped（避免 stop→start 竞态触发 IncorrectInstanceState）。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if provider.get_instance(instance_id, region, zone).state == "stopped":
+                return
+        except Exception as e:
+            log.warning("restart wait poll failed for %s: %s", instance_id, e)
+        time.sleep(interval)
+    log.warning("restart wait timed out for %s; attempting start anyway", instance_id)
 
 
 def run_instance_action(account_id: int, instance_id: str, action: str,
@@ -92,6 +108,7 @@ def run_instance_action(account_id: int, instance_id: str, action: str,
                 provider.stop_instance(instance_id, region, zone)
             elif action == "restart":
                 provider.stop_instance(instance_id, region, zone)
+                _wait_until_stopped(provider, instance_id, region, zone)
                 provider.start_instance(instance_id, region, zone)
             elif action == "destroy":
                 provider.terminate_instance(instance_id, region, zone)

@@ -140,6 +140,10 @@ class AzureProvider:
         rg, name = _split_vm_id(instance_id)
         self._compute.virtual_machines.begin_delete(resource_group_name=rg, vm_name=name).result()
 
+    def reboot_instance(self, instance_id: str, region: str, zone: str = "") -> None:
+        rg, name = _split_vm_id(instance_id)
+        self._compute.virtual_machines.begin_restart(resource_group_name=rg, vm_name=name).result()
+
     def list_firewall_rules(self, region: Optional[str] = None) -> list[FirewallRule]:
         rules: list[FirewallRule] = []
         for nsg in self._network.network_security_groups.list_all():
@@ -401,6 +405,22 @@ class AzureProvider:
             launched_at=launched,
             security_groups=[],
         )
+
+    def close(self) -> None:
+        # 每个管理客户端及凭据各持有 HTTP 连接池与后台刷新 token，逐个关闭释放资源。
+        for closeable in (self._compute, self._network, self._resource, self._subscription, self._credential):
+            close = getattr(closeable, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
+    def __enter__(self) -> "AzureProvider":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
 
 def _map_state(state: str) -> str:

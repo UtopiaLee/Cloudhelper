@@ -24,7 +24,7 @@ from app.core.crypto import get_crypto
 from app.core.db import SessionLocal
 from app.models import CloudAccount, InstanceState, SSHKey
 from app.providers import make_provider
-from app.services.ssh_common import connect_ssh
+from app.services.ssh_common import _TOFUAddPolicy, _load_known_hosts, connect_ssh
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +187,8 @@ def _port_covers_22(pr: str) -> bool:
 def _ssh_run(host: str, port: int, user: str, password: Optional[str],
              pkey: Optional[paramiko.PKey], cmd: str, timeout: float = 6.0) -> str:
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    _load_known_hosts(client)
+    client.set_missing_host_key_policy(_TOFUAddPolicy())
     try:
         if password:
             client.connect(host, port=port, username=user, password=password,

@@ -111,6 +111,27 @@ def get_price(db: Session, provider: str, region: str, instance_type: str,
     return price
 
 
+def get_price_or_unknown(db: Session, provider: str, region: str, instance_type: str,
+                         account: Optional[CloudAccount] = None) -> Optional[float]:
+    """像 get_price，但区分"按政策免费 (0.0)"和"价格未知/查不到 (None)"。
+
+    非免费机型却解析出 0.0，说明 fallback 表 / Pricing API 没覆盖到它，
+    返回 None 让调用方把这次推算标记为不完整，而不是当成免费。
+    """
+    if not instance_type:
+        return None
+    if _is_free(provider, region, instance_type):
+        return 0.0
+    try:
+        price = get_price(db, provider, region, instance_type, account=account)
+    except Exception as e:
+        log.warning("price lookup failed %s/%s/%s: %s", provider, region, instance_type, e)
+        return None
+    if price <= 0.0:
+        return None
+    return price
+
+
 # AWS Pricing API ----------------------------------------------------
 _AWS_REGION_NAME = {
     "us-east-1": "US East (N. Virginia)",
